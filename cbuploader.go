@@ -11,12 +11,17 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-func uploadToCouchbase(id int, wg *sync.WaitGroup, collection *gocb.Collection) {
+func uploadToCouchbase(id int, wg *sync.WaitGroup, collection *gocb.Collection, dataset string) {
 	defer wg.Done()
-	doc := getDocuments(1)[0]
+	doc := getDocuments(1, dataset)
 	var err error
 	for retry := 0; retry < 5; retry++ {
-		_, err = collection.Upsert(strconv.Itoa(id), doc, nil)
+		var err error
+		if dataset == "car" {
+			_, err = collection.Upsert(strconv.Itoa(id), (*doc.CarDocument)[0], nil)
+		} else {
+			_, err = collection.Upsert(strconv.Itoa(id), (*doc.StoreDocument)[0], nil)
+		}
 		if err != nil {
 			time.Sleep(2 * time.Second)
 		} else {
@@ -33,7 +38,8 @@ func main() {
 	var nodeAddress string
 	var bucketName string
 	var scopeName string
-	var collectionName string
+	var collectionName1 string
+	var collectionName2 string
 	var username string
 	var password string
 	var startIndex int
@@ -43,7 +49,8 @@ func main() {
 	flag.StringVar(&nodeAddress, "nodeAddress", "", "IP address of the node")
 	flag.StringVar(&bucketName, "bucketName", "", "Bucket name")
 	flag.StringVar(&scopeName, "scopeName", "_default", "Scope name")
-	flag.StringVar(&collectionName, "collectionName", "_default", "Collection name")
+	flag.StringVar(&collectionName1, "collectionName1", "_default", "Collection name 1")
+	flag.StringVar(&collectionName2, "collectionName2", "store", "Collection name 2")
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")
 	flag.IntVar(&startIndex, "startIndex", 0, "startIndex")
@@ -70,7 +77,7 @@ func main() {
 		panic(err)
 	}
 
-	col := bucket.Scope(scopeName).Collection(collectionName)
+	col := bucket.Scope(scopeName).Collection(collectionName1)
 
 	var wg sync.WaitGroup
 	for startIndex != endIndex {
@@ -80,7 +87,23 @@ func main() {
 		}
 		wg.Add(end - startIndex)
 		for j := startIndex; j < end; j++ {
-			go uploadToCouchbase(j, &wg, col)
+			go uploadToCouchbase(j, &wg, col, "car")
+		}
+		wg.Wait()
+		startIndex = end
+	}
+	startIndex = 0
+	endIndex = 15
+	col = bucket.Scope(scopeName).Collection(collectionName2)
+
+	for startIndex != endIndex {
+		end := startIndex + batchSize
+		if end > endIndex {
+			end = endIndex
+		}
+		wg.Add(end - startIndex)
+		for j := startIndex; j < end; j++ {
+			go uploadToCouchbase(j, &wg, col, "store")
 		}
 		wg.Wait()
 		startIndex = end

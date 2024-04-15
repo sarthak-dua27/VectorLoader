@@ -5,6 +5,7 @@ go 1.21.6
 require (
 	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/couchbase/gocb/v2 v2.8.0
+	github.com/crazy3lf/colorconv v1.2.0
 	github.com/jaswdr/faker v1.19.1
 )
 
