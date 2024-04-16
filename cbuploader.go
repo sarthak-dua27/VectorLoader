@@ -14,7 +14,11 @@ import (
 
 func uploadToCouchbase(id int, wg *sync.WaitGroup, collection *gocb.Collection, dataset string) {
 	defer wg.Done()
-	doc := getDocuments(1, dataset)
+	doc, e := getDocuments(1, dataset)
+	if e != nil {
+		log.Printf("Error generating document %v", e)
+		return
+	}
 	var err error
 	for retry := 0; retry < 5; retry++ {
 		var err error
@@ -95,7 +99,7 @@ func main() {
 		panic(fmt.Errorf("error creating cluster object : %v", er))
 	}
 
-	createUtilities(cluster, bucketName, scopeName, []string{collectionName1, collectionName2})
+	//createUtilities(cluster, bucketName, scopeName, []string{collectionName1, collectionName2})
 	bucket := cluster.Bucket(bucketName)
 
 	err := bucket.WaitUntilReady(20*time.Second, nil)
@@ -137,29 +141,29 @@ func main() {
 }
 
 func createUtilities(cluster *gocb.Cluster, bucketName string, scopeName string, collectionName []string) {
-	bucketMgr := cluster.Buckets()
-	err := bucketMgr.CreateBucket(gocb.CreateBucketSettings{
-		BucketSettings: gocb.BucketSettings{
-			Name:                 bucketName,
-			FlushEnabled:         true,
-			ReplicaIndexDisabled: true,
-			RAMQuotaMB:           1024,
-			NumReplicas:          0,
-			BucketType:           gocb.CouchbaseBucketType,
-		},
-		ConflictResolutionType: gocb.ConflictResolutionTypeSequenceNumber,
-	}, nil)
-	if err != nil {
-		fmt.Println("Error creating bucket:", err)
-	} else {
-		fmt.Println("Bucket created successfully.")
-	}
+	//bucketMgr := cluster.Buckets()
+	//err := bucketMgr.CreateBucket(gocb.CreateBucketSettings{
+	//	BucketSettings: gocb.BucketSettings{
+	//		Name:                 bucketName,
+	//		FlushEnabled:         true,
+	//		ReplicaIndexDisabled: true,
+	//		RAMQuotaMB:           1024,
+	//		NumReplicas:          0,
+	//		BucketType:           gocb.CouchbaseBucketType,
+	//	},
+	//	ConflictResolutionType: gocb.ConflictResolutionTypeSequenceNumber,
+	//}, nil)
+	//if err != nil {
+	//	fmt.Println("Error creating bucket:", err)
+	//} else {
+	//	fmt.Println("Bucket created successfully.")
+	//}
 
 	bucket := cluster.Bucket(bucketName)
 
 	collections := bucket.Collections()
 
-	err = collections.CreateScope(scopeName, nil)
+	err := collections.CreateScope(scopeName, nil)
 	if err != nil {
 		if errors.Is(err, gocb.ErrScopeExists) {
 			fmt.Println("Scope already exists")
@@ -174,7 +178,7 @@ func createUtilities(cluster *gocb.Cluster, bucketName string, scopeName string,
 			ScopeName: scopeName,
 		}
 
-		err = collections.CreateCollection(collection, nil)
+		err := collections.CreateCollection(collection, nil)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCollectionExists) {
 				fmt.Println("Collection already exists")

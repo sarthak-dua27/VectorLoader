@@ -96,7 +96,7 @@ func fetchEmbeddings(sentence string) ([]float32, int, error) {
 	return vectors.Vectors, vectors.Dim, nil
 }
 
-func generateCarDocument() document {
+func generateCarDocument() (document, error) {
 
 	var goFakeIt = gofakeit.New(0)
 
@@ -116,12 +116,13 @@ func generateCarDocument() document {
 
 	data, e := ioutil.ReadFile("./colors.json")
 	if e != nil {
-		return doc
+		return document{}, e
 	}
 	var colorsobj Colors
 	e = json.Unmarshal(data, &colorsobj)
 	if e != nil {
 		fmt.Printf("Error unmarshaling json data %v", e)
+		return document{}, e
 	}
 
 	randomIndex := rand.Intn(len(colorsobj.Colors))
@@ -132,6 +133,7 @@ func generateCarDocument() document {
 	doc.RGB, e = get_rgb_from_hex(doc.Hex)
 	if e != nil {
 		fmt.Printf("Error retrieving RGB embeddings %v\n", e)
+		return document{}, e
 	}
 	var vec []float32
 	var dim int
@@ -147,14 +149,14 @@ func generateCarDocument() document {
 	}
 	if err != nil {
 		fmt.Printf("Error retrieving vector embeddings %v\n", err)
+		return document{}, err
 	}
-
 	doc.Vector = vec
 	doc.Dim = dim
-	return doc
+	return doc, nil
 }
 
-func generateStoreDocument() Store {
+func generateStoreDocument() (Store, error) {
 	source := rand.NewSource(time.Now().UnixNano())
 	fake := faker.NewWithSeed(source)
 	store := Store{}
@@ -164,25 +166,31 @@ func generateStoreDocument() Store {
 	store.Address = fake.Address().SecondaryAddress() + ", " + fake.Address().City() + ", " + fake.Address().PostCode()
 	store.Contact = fake.Person().Contact().Phone
 
-	return store
+	return store, nil
 }
 
-func buildVectors(documents *[]document, storedocument *[]Store, wg *sync.WaitGroup, dataset string) {
-
-	mu.Lock()
-	defer mu.Unlock()
-
+func buildVectors(documents *[]document, storedocument *[]Store, wg *sync.WaitGroup, dataset string) error {
+	var carObj document
+	var storeObj Store
+	var err error
 	if dataset == "car" {
-		*documents = append(*documents, generateCarDocument())
+		carObj, err = generateCarDocument()
 	} else {
-		*storedocument = append(*storedocument, generateStoreDocument())
+		storeObj, err = generateStoreDocument()
 	}
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	*documents = append(*documents, carObj)
+	*storedocument = append(*storedocument, storeObj)
+	mu.Unlock()
 
 	wg.Done()
+	return nil
 }
 
-func getDocuments(batchSize int, dataset string) returnType {
-
+func getDocuments(batchSize int, dataset string) (returnType, error) {
 	var documents []document
 	var storeDocuments []Store
 	returnObj := returnType{&documents, &storeDocuments}
@@ -191,11 +199,14 @@ func getDocuments(batchSize int, dataset string) returnType {
 
 	for i := 0; i < batchSize; i++ {
 		wg.Add(1)
-		go buildVectors(&documents, &storeDocuments, &wg, dataset)
+		err := buildVectors(&documents, &storeDocuments, &wg, dataset)
+		if err != nil {
+			return returnObj, err
+		}
 	}
 	wg.Wait()
 
-	return returnObj
+	return returnObj, nil
 }
 
 func generateRandomID(length int) string {

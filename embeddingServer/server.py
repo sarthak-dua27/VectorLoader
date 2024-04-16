@@ -34,12 +34,13 @@ port = 4242
 # 	sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
 # 	return sentence_embeddings.tolist(), sentence_embeddings.shape
 
+embed_model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
+
 
 def generate_embeddings(sentence):
-    embed_model = BGEM3FlagModel('BAAI/bge-m3',  use_fp16=True)
     emb = embed_model.encode(str(sentence))
     emb = emb['dense_vecs'].tolist()
-    return [emb], [0,len(emb)]
+    return [emb], [0, len(emb)]
 
 
 @app.route("/api/v1/embeddings", methods=["POST"])
@@ -51,6 +52,7 @@ def fetch_embedding():
     embedding, shape = generate_embeddings(sentence)
     return jsonify({"embeddings": embedding[0], "dim": shape[1]})
 
+
 if __name__ == "__main__":
-	app.debug = True
-	app.run('0.0.0.0', port = port, threaded=True)
+    app.debug = True
+    app.run('0.0.0.0', port=port, threaded=True)
