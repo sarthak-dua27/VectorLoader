@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 )
 
 type embeddings struct {
@@ -32,10 +33,10 @@ type document struct {
 	Price        int
 	Description  string
 	Color        string
-	RGB          [3]uint8 `json:"color_rgb_vector"`
-	Hex          string   `json:"color_hex"`
-	//Dim          int 	`json:"description_vector_dim"`
-	//Vector       []float32 	`json:"description_vector"`
+	RGB          [3]uint8  `json:"color_rgb_vector"`
+	Hex          string    `json:"color_hex"`
+	Dim          int       `json:"description_vector_dim"`
+	Vector       []float32 `json:"description_vector"`
 }
 type Store struct {
 	ID            string
@@ -109,8 +110,9 @@ func generateCarDocument() document {
 	doc.Year = goFakeIt.Car().Year
 	doc.Availability = rand.Intn(1) == 1
 	doc.Transmission = goFakeIt.Car().Transmission
-	doc.Description = fmt.Sprintf("This car is a %s on %s Transmission. Manifactured in %d year this is one of the best car to drive", doc.Car, doc.Transmission, doc.Year)
-	doc.Price = rand.Intn(10000) + 100000
+	adjectives := [3]string{"sporty", "sedan", "cruiser"}
+	doc.Description = fmt.Sprintf("This is a %s car with %s transmission and manufactured in %d year. This car belongs to %s category and has a rating of %d stars", doc.Car, doc.Transmission, doc.Year, adjectives[rand.Intn(len(adjectives))], doc.Rating)
+	doc.Price = rand.Intn(100000) + 1000000
 
 	data, e := ioutil.ReadFile("./colors.json")
 	if e != nil {
@@ -131,29 +133,30 @@ func generateCarDocument() document {
 	if e != nil {
 		fmt.Printf("Error retrieving RGB embeddings %v\n", e)
 	}
-	//var vec []float32
-	//var dim int
-	//var err error
-	//for retry := 0; retry < 5; retry++ {
-	//	vec, dim, err = fetchEmbeddings(doc.Description)
-	//	if err != nil {
-	//		time.Sleep(2 * time.Second)
-	//	} else {
-	//		err = nil
-	//		break
-	//	}
-	//}
-	//if err != nil {
-	//	fmt.Printf("Error retrieving vector embeddings %v\n", err)
-	//}
-	//
-	//doc.Vector = vec
-	//doc.Dim = dim
+	var vec []float32
+	var dim int
+	var err error
+	for retry := 0; retry < 5; retry++ {
+		vec, dim, err = fetchEmbeddings(doc.Description)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+		} else {
+			err = nil
+			break
+		}
+	}
+	if err != nil {
+		fmt.Printf("Error retrieving vector embeddings %v\n", err)
+	}
+
+	doc.Vector = vec
+	doc.Dim = dim
 	return doc
 }
 
 func generateStoreDocument() Store {
-	fake := faker.New()
+	source := rand.NewSource(time.Now().UnixNano())
+	fake := faker.NewWithSeed(source)
 	store := Store{}
 	store.ID = generateRandomID(10)
 	store.StoreName = fake.Company().Name() + " " + fake.Company().Suffix()

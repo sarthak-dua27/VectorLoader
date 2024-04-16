@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -45,34 +46,59 @@ func main() {
 	var startIndex int
 	var endIndex int
 	var batchSize int
+	var capella bool
+	var numStores int
 
 	flag.StringVar(&nodeAddress, "nodeAddress", "", "IP address of the node")
-	flag.StringVar(&bucketName, "bucketName", "", "Bucket name")
-	flag.StringVar(&scopeName, "scopeName", "_default", "Scope name")
-	flag.StringVar(&collectionName1, "collectionName1", "_default", "Collection name 1")
+	flag.StringVar(&bucketName, "bucketName", "LetsGoShopping", "Bucket name")
+	flag.StringVar(&scopeName, "scopeName", "CarComplex", "Scope name")
+	flag.StringVar(&collectionName1, "collectionName1", "car", "Collection name 1")
 	flag.StringVar(&collectionName2, "collectionName2", "store", "Collection name 2")
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")
 	flag.IntVar(&startIndex, "startIndex", 0, "startIndex")
 	flag.IntVar(&endIndex, "endIndex", 50, "endIndex")
 	flag.IntVar(&batchSize, "batchSize", 100, "batchSize")
+	flag.IntVar(&numStores, "num stores", 15, "number of stores")
+	flag.BoolVar(&capella, "capella", false, "capella")
 
 	flag.Parse()
 
-	// Initialize the Connection
-	cluster, err := gocb.Connect("couchbase://"+nodeAddress, gocb.ClusterOptions{
-		Authenticator: gocb.PasswordAuthenticator{
-			Username: username,
-			Password: password,
-		},
-	})
-
-	if err != nil {
-		panic(fmt.Errorf("error creating cluster object : %v", err))
+	var cluster *gocb.Cluster
+	var er error
+	if capella {
+		options := gocb.ClusterOptions{
+			Authenticator: gocb.PasswordAuthenticator{
+				Username: username,
+				Password: password,
+			},
+			SecurityConfig: gocb.SecurityConfig{
+				TLSSkipVerify: true,
+			},
+		}
+		if err := options.ApplyProfile(gocb.
+			ClusterConfigProfileWanDevelopment); err != nil {
+			log.Fatal(err)
+		}
+		cluster, er = gocb.Connect(nodeAddress, options)
+	} else {
+		// Initialize the Connection
+		cluster, er = gocb.Connect("couchbase://"+nodeAddress, gocb.ClusterOptions{
+			Authenticator: gocb.PasswordAuthenticator{
+				Username: username,
+				Password: password,
+			},
+		})
 	}
+
+	if er != nil {
+		panic(fmt.Errorf("error creating cluster object : %v", er))
+	}
+
+	createUtilities(cluster, bucketName, scopeName, []string{collectionName1, collectionName2})
 	bucket := cluster.Bucket(bucketName)
 
-	err = bucket.WaitUntilReady(15*time.Second, nil)
+	err := bucket.WaitUntilReady(20*time.Second, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -93,7 +119,7 @@ func main() {
 		startIndex = end
 	}
 	startIndex = 0
-	endIndex = 15
+	endIndex = numStores
 	col = bucket.Scope(scopeName).Collection(collectionName2)
 
 	for startIndex != endIndex {
@@ -107,5 +133,54 @@ func main() {
 		}
 		wg.Wait()
 		startIndex = end
+	}
+}
+
+func createUtilities(cluster *gocb.Cluster, bucketName string, scopeName string, collectionName []string) {
+	bucketMgr := cluster.Buckets()
+	err := bucketMgr.CreateBucket(gocb.CreateBucketSettings{
+		BucketSettings: gocb.BucketSettings{
+			Name:                 bucketName,
+			FlushEnabled:         true,
+			ReplicaIndexDisabled: true,
+			RAMQuotaMB:           1024,
+			NumReplicas:          0,
+			BucketType:           gocb.CouchbaseBucketType,
+		},
+		ConflictResolutionType: gocb.ConflictResolutionTypeSequenceNumber,
+	}, nil)
+	if err != nil {
+		fmt.Println("Error creating bucket:", err)
+	} else {
+		fmt.Println("Bucket created successfully.")
+	}
+
+	bucket := cluster.Bucket(bucketName)
+
+	collections := bucket.Collections()
+
+	err = collections.CreateScope(scopeName, nil)
+	if err != nil {
+		if errors.Is(err, gocb.ErrScopeExists) {
+			fmt.Println("Scope already exists")
+		} else {
+			panic(err)
+		}
+	}
+
+	for _, collection := range collectionName {
+		collection := gocb.CollectionSpec{
+			Name:      collection,
+			ScopeName: scopeName,
+		}
+
+		err = collections.CreateCollection(collection, nil)
+		if err != nil {
+			if errors.Is(err, gocb.ErrCollectionExists) {
+				fmt.Println("Collection already exists")
+			} else {
+				panic(err)
+			}
+		}
 	}
 }
