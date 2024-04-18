@@ -124,7 +124,7 @@ func main() {
 		panic(fmt.Errorf("error creating cluster object : %v", er))
 	}
 
-	createUtilities(cluster, bucketName, scopeName, []string{collectionName2})
+	createUtilities(cluster, bucketName, scopeName, []string{collectionName1, collectionName2, collectionName3})
 	bucket := cluster.Bucket(bucketName)
 
 	err := bucket.WaitUntilReady(20*time.Second, nil)
