@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"strconv"
 	"sync"
@@ -39,12 +41,34 @@ func uploadToCouchbase(id int, wg *sync.WaitGroup, collection *gocb.Collection, 
 	}
 }
 
+func uploadColorDocuments(index int, wg *sync.WaitGroup, collection *gocb.Collection, document Color) {
+	defer wg.Done()
+	var err error
+	for retry := 0; retry < 5; retry++ {
+		var err error
+		_, err = collection.Upsert(strconv.Itoa(index), document, nil)
+		if err != nil {
+			fmt.Printf("error %v\n", err)
+			time.Sleep(2 * time.Second)
+		} else {
+			//fmt.Printf("Done uploading %v docuemnt\n", index)
+			err = nil
+			break
+		}
+	}
+	if err != nil {
+		log.Printf("Error inserting document %s: %v", strconv.Itoa(index), err)
+	}
+
+}
+
 func main() {
 	var nodeAddress string
 	var bucketName string
 	var scopeName string
 	var collectionName1 string
 	var collectionName2 string
+	var collectionName3 string
 	var username string
 	var password string
 	var startIndex int
@@ -58,6 +82,7 @@ func main() {
 	flag.StringVar(&scopeName, "scopeName", "CarComplex", "Scope name")
 	flag.StringVar(&collectionName1, "collectionName1", "car", "Collection name 1")
 	flag.StringVar(&collectionName2, "collectionName2", "store", "Collection name 2")
+	flag.StringVar(&collectionName3, "collectionName3", "colors", "Collection name 3")
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")
 	flag.IntVar(&startIndex, "startIndex", 0, "startIndex")
@@ -99,7 +124,7 @@ func main() {
 		panic(fmt.Errorf("error creating cluster object : %v", er))
 	}
 
-	//createUtilities(cluster, bucketName, scopeName, []string{collectionName1, collectionName2})
+	createUtilities(cluster, bucketName, scopeName, []string{collectionName2})
 	bucket := cluster.Bucket(bucketName)
 
 	err := bucket.WaitUntilReady(20*time.Second, nil)
@@ -109,6 +134,7 @@ func main() {
 
 	col := bucket.Scope(scopeName).Collection(collectionName1)
 
+	// upload car data
 	var wg sync.WaitGroup
 	for startIndex != endIndex {
 		end := startIndex + batchSize
@@ -126,6 +152,7 @@ func main() {
 	endIndex = numStores
 	col = bucket.Scope(scopeName).Collection(collectionName2)
 
+	// upload store data
 	for startIndex != endIndex {
 		end := startIndex + batchSize
 		if end > endIndex {
@@ -138,6 +165,51 @@ func main() {
 		wg.Wait()
 		startIndex = end
 	}
+
+	// upload colors data
+	data, e := ioutil.ReadFile("./colors.json")
+	if e != nil {
+		fmt.Printf("Error reading colors file %v\n", e)
+		return
+	}
+	var colorsobj Colors
+	e = json.Unmarshal(data, &colorsobj)
+	if e != nil {
+		fmt.Printf("Error reading colors file %v\n", e)
+		return
+	}
+
+	for i := range colorsobj.Colors {
+
+		color := &colorsobj.Colors[i]
+		vec, e := get_rgb_from_hex(color.Hex)
+		color.Vector = vec
+		if e != nil {
+			fmt.Printf("Error getting rgb from hex%v\n", e)
+			return
+		}
+	}
+
+	startIndex = 0
+	endIndex = len(colorsobj.Colors)
+	col = bucket.Scope(scopeName).Collection(collectionName3)
+	if batchSize > endIndex {
+		batchSize = endIndex / 3
+	}
+	for startIndex != endIndex {
+		end := startIndex + batchSize
+		if end > endIndex {
+			end = endIndex
+		}
+		wg.Add(end - startIndex)
+		for j := startIndex; j < end; j++ {
+			//fmt.Println(j)
+			go uploadColorDocuments(j, &wg, col, colorsobj.Colors[j])
+		}
+		wg.Wait()
+		startIndex = end
+	}
+
 }
 
 func createUtilities(cluster *gocb.Cluster, bucketName string, scopeName string, collectionName []string) {
@@ -181,7 +253,7 @@ func createUtilities(cluster *gocb.Cluster, bucketName string, scopeName string,
 		err := collections.CreateCollection(collection, nil)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCollectionExists) {
-				fmt.Println("Collection already exists")
+				fmt.Printf("collection %s already exists\n", collection.Name)
 			} else {
 				panic(err)
 			}

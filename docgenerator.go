@@ -28,15 +28,14 @@ type document struct {
 	Type         string
 	Rating       int
 	Year         int
-	Availability bool
 	Transmission string
 	Price        int
 	Description  string
 	Color        string
-	RGB          [3]uint8  `json:"color_rgb_vector"`
-	Hex          string    `json:"color_hex"`
-	Dim          int       `json:"description_vector_dim"`
-	Vector       []float32 `json:"description_vector"`
+	RGB          [3]uint8  `json:"ColorRgbVector"`
+	Hex          string    `json:"ColorHex"`
+	Dim          int       `json:"DescriptionVectorDimension"`
+	Vector       []float32 `json:"DescriptionVector"`
 }
 type Store struct {
 	ID            string
@@ -52,8 +51,9 @@ type returnType struct {
 }
 
 type Color struct {
-	Name string `json:"color"`
-	Hex  string `json:"hex"`
+	Name   string   `json:"color"`
+	Hex    string   `json:"hex"`
+	Vector [3]uint8 `json:"ColorVector,omitempty"`
 }
 
 type Colors struct {
@@ -108,10 +108,8 @@ func generateCarDocument() (document, error) {
 	doc.Rating = rand.Intn(6)
 	doc.Type = goFakeIt.Car().Type
 	doc.Year = goFakeIt.Car().Year
-	doc.Availability = rand.Intn(1) == 1
 	doc.Transmission = goFakeIt.Car().Transmission
-	adjectives := [3]string{"sporty", "sedan", "cruiser"}
-	doc.Description = fmt.Sprintf("This is a %s car with %s transmission and manufactured in %d year. This car belongs to %s category and has a rating of %d stars", doc.Car, doc.Transmission, doc.Year, adjectives[rand.Intn(len(adjectives))], doc.Rating)
+	adjectives := [3]string{"sleeper", "sedan", "cruiser"}
 	doc.Price = rand.Intn(100000) + 1000000
 
 	data, e := ioutil.ReadFile("./colors.json")
@@ -129,6 +127,8 @@ func generateCarDocument() (document, error) {
 	randomColor := colorsobj.Colors[randomIndex]
 
 	doc.Color = randomColor.Name
+
+	doc.Description = fmt.Sprintf("This is a %s car with %s transmission and manufactured in %d year. This car is available in %s color. This car belongs to %s category and has a rating of %d stars", doc.Car, doc.Transmission, doc.Year, doc.Color, adjectives[rand.Intn(len(adjectives))], doc.Rating)
 	doc.Hex = randomColor.Hex
 	doc.RGB, e = get_rgb_from_hex(doc.Hex)
 	if e != nil {
@@ -162,7 +162,7 @@ func generateStoreDocument() (Store, error) {
 	store := Store{}
 	store.ID = generateRandomID(10)
 	store.StoreName = fake.Company().Name() + " " + fake.Company().Suffix()
-	store.AvailableCars = get_car(rand.Intn(5))
+	store.AvailableCars = get_car(rand.Intn(8) + 3)
 	store.Address = fake.Address().SecondaryAddress() + ", " + fake.Address().City() + ", " + fake.Address().PostCode()
 	store.Contact = fake.Person().Contact().Phone
 
